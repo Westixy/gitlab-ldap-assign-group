@@ -1,0 +1,66 @@
+stages:
+- build
+- run
+
+variables:
+  GITLAB_HOST: https://[redacted]
+  LDAP_URL: ldaps://[redacted]:636
+  RULES_PATH: ./policy-rules.yml
+
+docker-build:
+  image: quay.io/buildah/stable
+  stage: build
+  variables:
+    STORAGE_DRIVER: vfs
+    # You may need this workaround for some errors: https://stackoverflow.com/a/70438141/1233435
+    BUILDAH_ISOLATION: chroot
+    FQ_IMAGE_NAME: "$CI_REGISTRY_IMAGE"
+  before_script:
+    # Log in to the GitLab container registry
+    - export REGISTRY_AUTH_FILE=$HOME/auth.json
+    - echo "$CI_REGISTRY_PASSWORD" | buildah login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  script:
+    - buildah images
+    - buildah build -t $FQ_IMAGE_NAME:$CI_COMMIT_REF_SLUG -t $FQ_IMAGE_NAME:$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA -f ./Dockerfile
+    - buildah images
+    - buildah push $FQ_IMAGE_NAME:$CI_COMMIT_REF_SLUG
+    - buildah push $FQ_IMAGE_NAME:$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA
+  rules:
+    - if: $SKIP_BUILD == "true"
+      when: never
+    - if: $FORCE_BUILD == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == 'merge_request_event'
+      changes:
+        - Dockerfile
+        - src/**
+        - .gitlab-ci.yml
+
+.run:
+  image: 
+    name: "[redacted]/ldap-assign-groups:$CI_COMMIT_REF_SLUG"
+    pull_policy: always
+  stage: run
+  variables:
+    DRY_RUN: "true"
+  script: node /src/index.mjs
+
+run_plan:
+  extends: .run
+  rules: 
+    - if: $ACTION == "RUN_PLAN"
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == 'merge_request_event'
+      changes:
+      - policy-rules.yml
+      - .gitlab-ci.yml
+
+run_apply:
+  extends: .run
+  variables:
+    DRY_RUN: "false"
+  rules: 
+    - if: $ACTION == "RUN_APPLY"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+      - policy-rules.yml
+      - .gitlab-ci.yml
+

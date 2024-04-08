@@ -1,0 +1,66 @@
+
+entities:
+  prodAdmins:
+    provider: ldap
+    kind: group
+    selector: CN=prodAdmin,OU=Groups,DC=example,DC=net
+  prodOperators:
+    provider: ldap
+    kind: group
+    selector: CN=prodOperator,OU=Groups,DC=example,DC=net
+  root:
+    provider: gitlab
+    kind: user
+    selector: root
+  bob:
+    provider: gitlab  
+    kind: user
+    selector: bob
+
+assignments:
+  admins:
+    kind: group
+    path: access/gitlab-admin
+    entities:
+      OWNER:
+        - root
+      MAINTAINER:
+        - prodAdmins
+        - bob
+      DEVELOPER:
+        - prodOperators
+  operators:
+    kind: group
+    path: access/gitlab-contributor
+    entities:
+      OWNER:
+        - root
+      MAINTAINER:
+        - prodOperators
+        - bob
+
+memberships:
+  efr:
+    kind: project
+    path: packages/efr
+    assignments:
+      MAINTAINER:
+        - admins
+      DEVELOPER:
+        - operators
+  aws:
+    kind: project
+    path: terraform/aws
+    assignments:
+      MAINTAINER:
+        - admins
+      DEVELOPER:
+        - operators
+  terraform:
+    kind: group
+    path: terraform
+    assignments:
+      MAINTAINER:
+        - admins
+
+
